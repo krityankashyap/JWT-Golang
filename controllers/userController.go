@@ -28,15 +28,27 @@ func Login()
 
 func GetUsers()
 
-func GetUser() gin.HandlerFunc {  // Only admin can check the details of other users
+func GetUser() gin.HandlerFunc {  
  return func(c *gin.Context) {
 	UserId := c.Param("user_id");
 
-	err := utils.MatchUserTypeToUId(UserId, c);
+	err := utils.MatchUserTypeToUId(UserId, c);  // Only admin can check the details of other users
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()});
 		return;
 	}
+	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second);
+
+	var user models.User;
+	err = UserCollection.FindOne(ctx, bson.M{"user_id": UserId}).Decode(&user); // FindOne returns a SingleResult which is decoded into the user variable
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error occurred while fetching the user details"});
+		return;
+	}
+
+	defer cancel();
+	c.JSON(http.StatusOK, user); // if the user is found then return the user details
  }
  
 }
