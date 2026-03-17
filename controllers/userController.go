@@ -72,6 +72,24 @@ func SignUp() gin.HandlerFunc {
 		user.ID = primitive.NewObjectID(); // NewObjectID returns a new ObjectID generated from the current timestamp, machine id, process id, and a random counter.
 
 		user.User_id= user.ID.Hex(); // Hex returns the hex string reprsentation of the object Id
+
+		token, refreshToken, _ := utils.GenerateToken(*user.Email, *user.First_name, *user.Last_name, *&user.User_type, *&user.User_id); // GenerateToken generates the JWT token and refresh token for the user
+
+		user.Token = &token;
+		user.Refresh_token = &refreshToken;
+
+		// We have to insert the user in the database after hashing the password and generating the token and refresh token
+
+		resultInsertionNumber, insertErr := UserCollection.InsertOne(ctx, user); // InsertOne inserts a single document into the collection and returns the result of the insertion
+
+		if insertErr != nil {
+			log.Panic(insertErr);
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error occurred while inserting the user"});
+			return;
+		}
+
+		defer cancel();
+		c.JSON(http.StatusOK, resultInsertionNumber); // if the user is inserted successfully then return the result of the insertion
 	}
 }
 
