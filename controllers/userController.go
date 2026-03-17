@@ -19,9 +19,26 @@ import (
 var UserCollection *mongo.Collection = database.OpenCollection(database.Client, "user");
 var Validate= validator.New();  // New returns a new instance of 'validate' with sane defaults.
  
-func HashPassword() 
+func HashPassword(password string) string {
+	bcrypt.GenerateFromPassword([]byte(password), 14);
+	if err != nil {
+		log.Panic(err);
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error occurred while hashing the password"});
+	}
+} 
 
-func VerifyPassword()
+func VerifyPassword(userPassword string, providedPassword string) (bool , string) {
+	err:= bcrypt.CompareHashAndPassword([]byte(providedPassword), []byte(userPassword));
+	check:= true;
+	msg:= "";
+
+	if err != nil {
+		msg= fmt.Sprintf("Login or password is incorrect");
+		check= false;
+	}
+
+	return check, msg;
+}
 
 func SignUp() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -51,6 +68,9 @@ func SignUp() gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error occurred while checking the email"});
 			return;
 		}
+
+		password := HashPassword(*user.Password); // HashPassword hashes the password using bcrypt
+		user.Password = &password; // we have to assign the hashed password to the user variable before inserting the user in the database
 
 		count, err = UserCollection.CountDocuments(ctx, bson.M{"phone": user.Phone}); // CountDocuments returns the count of the documents that match the filter
 
@@ -93,7 +113,31 @@ func SignUp() gin.HandlerFunc {
 	}
 }
 
-func Login()
+func Login() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var ctx, cancel= context.WithTimeout(context.Background(), 100*time.Second);
+		var user models.User;
+		var foundUser models.User;
+
+		err := c.BindJSON(&user); // BindJSON binds the received JSON to the user variable
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()});
+			return;
+		}
+
+		// we will then try to find the user in the database based on the email provided in the request body
+
+		err := UserCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser); 
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error occurred while fetching the user details"});
+			return;
+		}
+
+		passwordIsValid , mas:= VerifyPassword(*user.Password, *foundUser.Password); // VerifyPassword compares the provided password with the hashed password stored in the database
+    defer cancel();
+	}
+}
 
 func GetUsers()
 
