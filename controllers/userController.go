@@ -12,6 +12,7 @@ import (
  "github.com/krityan/golang-jwt/models"
   database "github.com/krityan/golang-jwt/config"
  "golang.org/x/crypto/bcrypt"
+ "go.mongodb.org/mongo-driver/bson"
 
 )
 
@@ -22,7 +23,57 @@ func HashPassword()
 
 func VerifyPassword()
 
-func SignUp()
+func SignUp() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var ctx, cancel= context.WithTimeout(context.Background(), 100*time.Second);
+
+		var user models.User;  // SignUp functions creates the USER in the database and returns the user details in the response
+
+		err := c.BindJSON(&user); // BindJSON binds the received JSON to the user variable
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()});
+			return;
+		}
+
+		validateError := Validate.Struct(user); // Validate.Struct validates the struct fields based on the tags defined in the struct
+
+		if validateError != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": validateError.Error()});
+			return;
+		}
+
+		// count of the user if count of provided email or phone number is greater than 0 then the email or phone number is already in use
+
+		count , err := UserCollection.CountDocuments(ctx, bson.M{"email": user.Email}); // CountDocuments returns the count of the documents that match the filter
+		defer cancel();
+		if err != nil {
+			log.Panic(err);
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error occurred while checking the email"});
+			return;
+		}
+
+		count, err = UserCollection.CountDocuments(ctx, bson.M{"phone": user.Phone}); // CountDocuments returns the count of the documents that match the filter
+
+		defer cancel();
+		if err != nil {
+			log.Panic(err);
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error occurred while checking the phone number"});
+			return;
+		}
+
+		if count > 0 {
+			c.JSON(http.StatusBadRequest, gin.H("error": "Email or phone number already in use"));
+		}
+
+		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339)); // Parse parses a formatted string and returns the time value it represents
+
+		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339));
+
+		user.ID = primitive.NewObjectID(); // NewObjectID returns a new ObjectID generated from the current timestamp, machine id, process id, and a random counter.
+
+		user.User_id= user.ID.Hex(); // Hex returns the hex string reprsentation of the object Id
+	}
+}
 
 func Login()
 
