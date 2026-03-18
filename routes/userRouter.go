@@ -7,7 +7,7 @@ import (
 )
 
 func UserRoute(incomingRoute *gin.Engine) {
-	incomingRoute.Use(middleware.Authenticate);
+	incomingRoute.Use(middleware.Authenticate());
 
 	incomingRoute.GET("/user", controller.GetUsers());
 

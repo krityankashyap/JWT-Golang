@@ -10,10 +10,9 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/options"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"  
 )
 
 type SignedDetails struct {
@@ -47,8 +46,8 @@ func GenerateToken(email string, firstName string, lastName string, uid string, 
 		},
 	}
 
-	token , err := jwt.NewWithClaims(jwt.SigningMethodhs256 , claims).SignedString([]byte(SECRET_KEY));
-	refreshToken , err := jwt.NewWithClaims(jwt.SigningMethodhs256, refreshClaims).SignedString([]byte(SECRET_KEY));
+	token , err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(SECRET_KEY));
+	refreshToken , err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(SECRET_KEY));
 
 	if err != nil {
 		log.Panic(err);
@@ -93,4 +92,28 @@ func UpdateAllTokens(signedToken string, refreshToken string, user_id string){
 		return;
 	}
 	return;
+}
+
+func ValidateToken(signedToken string) (claims *SignedDetails, msg string) {
+	token , err := jwt.ParseWithClaims(signedToken, 
+		                                &SignedDetails{}, 
+																		func(token *jwt.Token) (interface{}, error) {
+																			return []byte(SECRET_KEY), nil;
+																		},
+
+	)
+
+	if err != nil {
+		msg = err.Error();
+		return;
+	}
+
+	claims, ok := token.Claims.(*SignedDetails);
+	if !ok {
+		msg = "the token is invalid"
+		msg = err.Error();
+		return;
+	}
+
+	return claims, msg;
 }
