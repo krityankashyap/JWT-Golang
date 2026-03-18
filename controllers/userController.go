@@ -13,6 +13,8 @@ import (
   database "github.com/krityan/golang-jwt/config"
  "golang.org/x/crypto/bcrypt"
  "go.mongodb.org/mongo-driver/bson"
+ "go.mongodb.org/mongo-driver/mongo"
+ "go.mongodb.org/mongo-driver/bson/primitive"
 
 )
 
@@ -20,11 +22,11 @@ var UserCollection *mongo.Collection = database.OpenCollection(database.Client, 
 var Validate= validator.New();  // New returns a new instance of 'validate' with sane defaults.
  
 func HashPassword(password string) string {
-	bcrypt.GenerateFromPassword([]byte(password), 14);
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), 14)
 	if err != nil {
-		log.Panic(err);
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error occurred while hashing the password"});
+		log.Panic(err)
 	}
+	return string(hashedPassword)
 } 
 
 func VerifyPassword(userPassword string, providedPassword string) (bool , string) {
@@ -69,8 +71,8 @@ func SignUp() gin.HandlerFunc {
 			return;
 		}
 
-		password := HashPassword(*user.Password); // HashPassword hashes the password using bcrypt
-		user.Password = &password; // we have to assign the hashed password to the user variable before inserting the user in the database
+		password := HashPassword(user.Password); // HashPassword hashes the password using bcrypt
+		user.Password = password; // we have to assign the hashed password to the user variable before inserting the user in the database
 
 		count, err = UserCollection.CountDocuments(ctx, bson.M{"phone": user.Phone}); // CountDocuments returns the count of the documents that match the filter
 
@@ -82,7 +84,7 @@ func SignUp() gin.HandlerFunc {
 		}
 
 		if count > 0 {
-			c.JSON(http.StatusBadRequest, gin.H("error": "Email or phone number already in use"));
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Email or phone number already in use"});
 		}
 
 		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339)); // Parse parses a formatted string and returns the time value it represents
@@ -93,10 +95,10 @@ func SignUp() gin.HandlerFunc {
 
 		user.User_id= user.ID.Hex(); // Hex returns the hex string reprsentation of the object Id
 
-		token, refreshToken, _ := utils.GenerateToken(*user.Email, *user.First_name, *user.Last_name, *&user.User_type, *&user.User_id); // GenerateToken generates the JWT token and refresh token for the user
+		token, refreshToken, _ := utils.GenerateToken(*&user.Email, *&user.First_name, *&user.Last_name, *&user.User_type, *&user.User_id); // GenerateToken generates the JWT token and refresh token for the user
 
-		user.Token = &token;
-		user.Refresh_token = &refreshToken;
+		user.Token = token;
+		user.Refresh_token = refreshToken;
 
 		// We have to insert the user in the database after hashing the password and generating the token and refresh token
 
@@ -127,16 +129,39 @@ func Login() gin.HandlerFunc {
 
 		// we will then try to find the user in the database based on the email provided in the request body
 
-		err := UserCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser); 
+		err = UserCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser); 
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error occurred while fetching the user details"});
 			return;
 		}
 
-		passwordIsValid , mas:= VerifyPassword(*user.Password, *foundUser.Password); // VerifyPassword compares the provided password with the hashed password stored in the database
+		passwordIsValid , mas:= VerifyPassword(*&user.Password, *&foundUser.Password); // VerifyPassword compares the provided password with the hashed password stored in the database
     defer cancel();
+
+		if passwordIsValid!= true{
+			c.JSON(http.StatusBadRequest, gin.H{"error": mas});
+			return;
+		}
+
+		if foundUser.Email == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User not found"});
+			return;
+		}
+
+		token, refreshToken, _ := utils.GenerateToken(*&foundUser.Email, *&foundUser.First_name, *&foundUser.Last_name, *&foundUser.User_type, *&foundUser.User_id); // GenerateToken generates the JWT token and refresh token for the user
+
+		utils.UpdateAllTokens(token, refreshToken, foundUser.User_id); // UpdateAllTokens updates the token and refresh token of the user in the database
+		err = UserCollection.FindOne(ctx, bson.M{"user_id": foundUser.User_id}).Decode(&foundUser); // FindOne returns a SingleResult which is decoded into the foundUser variable
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()});
+			return;
+		}
+
+		c.JSON(http.StatusOK, foundUser); // if the user is found and the password is valid then return the user details
 	}
+
 }
 
 func GetUsers()

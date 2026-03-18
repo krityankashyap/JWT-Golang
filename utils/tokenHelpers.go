@@ -1,18 +1,19 @@
 package utils
 
 import (
-
-	database "github.com/krityan/golang-jwt/config"
+	"context"
 	"log"
 	"os"
 	"time"
+
+	database "github.com/krityan/golang-jwt/config"
 
 	jwt "github.com/dgrijalva/jwt-go"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/options"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type SignedDetails struct {
@@ -55,4 +56,41 @@ func GenerateToken(email string, firstName string, lastName string, uid string, 
 	}
 
 	return token, refreshToken, err;
+}
+
+func UpdateAllTokens(signedToken string, refreshToken string, user_id string){
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second);
+
+	var updateObj primitive.D; // primitive.D is a BSON document that represents a single key-value pair. It is used to specify the update operations to be performed on the document.
+
+	updateObj = append(updateObj, bson.E{"token", signedToken});
+	updateObj = append(updateObj, bson.E{"refresh_token", refreshToken});
+
+	Updated_at,_ := time.Parse(time.RFC3339, time.Now().Format(time.RFC3339));
+
+	updateObj = append(updateObj, bson.E{"updated_at", Updated_at});
+
+	upsert := true; // upsert is a boolean value that specifies whether to insert a new document if no document matches the filter. If upsert is true, a new document will be inserted if no document matches the filter. If upsert is false, no document will be inserted if no document matches the filter.
+
+	filter := bson.M{"user_id": user_id}; // bson.M is a BSON document that represents a map of key-value pairs. It is used to specify the filter criteria for the update operation.
+	opt := options.UpdateOptions{
+		Upsert: &upsert,
+	}
+
+	_, err := UserCollection.UpdateOne(
+		ctx,
+		filter,
+		bson.D{
+			bson.E{"$set", updateObj},
+		},
+		&opt,
+	)
+
+	defer cancel();
+
+	if err != nil {
+		log.Panic(err);
+		return;
+	}
+	return;
 }
